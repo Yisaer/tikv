@@ -13,6 +13,7 @@ use tikv::storage::txn::{Error as TxnError, ErrorInner as TxnErrorInner};
 
 use crate::metrics::*;
 
+// add comments
 impl From<Error> for ErrorPb {
     // TODO: test error conversion.
     fn from(e: Error) -> ErrorPb {
