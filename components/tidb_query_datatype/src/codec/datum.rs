@@ -870,6 +870,7 @@ impl From<Decimal> for Datum {
     }
 }
 
+// Add comments
 impl From<Time> for Datum {
     fn from(t: Time) -> Datum {
         Datum::Time(t)
