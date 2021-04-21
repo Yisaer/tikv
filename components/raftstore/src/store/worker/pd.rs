@@ -189,6 +189,7 @@ impl Default for StoreStat {
 
 #[derive(Default)]
 pub struct PeerStat {
+    pub peer_id: u64,
     pub read_bytes: u64,
     pub read_keys: u64,
     pub last_read_bytes: u64,
@@ -678,6 +679,16 @@ where
             warn!("no available space");
         }
 
+        for (region_id, peer_stat) in &self.region_peers {
+            let mut peer_read_stat = pdpb::PeerReadStat::default();
+            let peer_id = peer_stat.peer_id;
+            peer_read_stat.set_peer_id(peer_id);
+            peer_read_stat.set_keys_read(peer_stat.read_keys - peer_stat.last_read_keys);
+            peer_read_stat.set_bytes_read(peer_stat.read_bytes - peer_stat.last_read_bytes);
+            peer_read_stat.set_region_id(*region_id);
+            stats.peers_read_stat.insert(*region_id,peer_read_stat);
+        }
+
         stats.set_available(available);
         stats.set_bytes_read(
             self.store_stat.engine_total_bytes_read - self.store_stat.engine_last_total_bytes_read,
@@ -909,12 +920,14 @@ where
 
     fn handle_read_stats(&mut self, mut read_stats: ReadStats) {
         for (region_id, region_info) in read_stats.region_infos.iter_mut() {
+            let peer_id = region_info.peer.id;
             let peer_stat = self
                 .region_peers
                 .entry(*region_id)
                 .or_insert_with(PeerStat::default);
             peer_stat.read_bytes += region_info.flow.read_bytes as u64;
             peer_stat.read_keys += region_info.flow.read_keys as u64;
+            peer_stat.peer_id = peer_id;
             self.store_stat.engine_total_bytes_read += region_info.flow.read_bytes as u64;
             self.store_stat.engine_total_keys_read += region_info.flow.read_keys as u64;
         }
