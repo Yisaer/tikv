@@ -46,6 +46,7 @@ use tikv_util::time::UnixSecs;
 use tikv_util::timer::GLOBAL_TIMER_HANDLE;
 use tikv_util::worker::{FutureRunnable as Runnable, FutureScheduler as Scheduler, Stopped};
 use tikv_util::{box_err, debug, error, info, thd_name, warn};
+use std::collections::BinaryHeap;
 
 type RecordPairVec = Vec<pdpb::RecordPair>;
 
@@ -199,6 +200,57 @@ pub struct PeerStat {
     pub last_report_ts: UnixSecs,
     pub approximate_keys: u64,
     pub approximate_size: u64,
+}
+#[derive(Clone,Eq,PartialEq)]
+pub enum HotStatDim {
+    ByteDim,
+    KeyDim,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct PeerHotStat {
+    pub peer_id: u64,
+    pub region_id: u64,
+    pub keys: u64,
+    pub bytes: u64,
+    pub dim: HotStatDim,
+}
+
+impl PeerHotStat {
+    fn new_keys_hot_stat(peer_id:u64,region_id:u64,keys:u64) -> PeerHotStat{
+        PeerHotStat {
+            peer_id:peer_id,
+            region_id:region_id,
+            keys: keys,
+            bytes:0,
+            dim: HotStatDim::KeyDim,
+        }
+    }
+
+    fn new_bytes_hot_stat(peer_id:u64,region_id:u64,bytes:u64) -> PeerHotStat{
+        PeerHotStat {
+            peer_id:peer_id,
+            region_id:region_id,
+            keys: 0,
+            bytes:bytes,
+            dim: HotStatDim::ByteDim,
+        }
+    }
+}
+
+impl Ord for PeerHotStat {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        match &self.dim {
+            HotStatDim::ByteDim => self.bytes.cmp(&other.bytes),
+            HotStatDim::KeyDim => self.keys.cmp(&other.keys),
+        }
+    }
+}
+
+impl PartialOrd for PeerHotStat {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl<E> Display for Task<E>
@@ -422,6 +474,11 @@ where
     }
 }
 
+const TOPN_CAPACITY :usize = 60;
+const READ_FLOW_BYTE: u64 = 2 * 1024;
+const READ_FLOW_KEY:u64 = 32;
+
+
 pub struct Runner<EK, ER, T>
 where
     EK: KvEngine,
@@ -432,6 +489,8 @@ where
     pd_client: Arc<T>,
     router: RaftRouter<EK, ER>,
     region_peers: HashMap<u64, PeerStat>,
+    read_bytes_peers: BinaryHeap<PeerHotStat>,
+    read_keys_peers: BinaryHeap<PeerHotStat>,
     store_stat: StoreStat,
     is_hb_receiver_scheduled: bool,
     // Records the boot time.
@@ -477,6 +536,8 @@ where
             router,
             is_hb_receiver_scheduled: false,
             region_peers: HashMap::default(),
+            read_bytes_peers: BinaryHeap::with_capacity(TOPN_CAPACITY),
+            read_keys_peers: BinaryHeap::with_capacity(TOPN_CAPACITY),
             store_stat: StoreStat::default(),
             start_ts: UnixSecs::now(),
             scheduler,
@@ -679,14 +740,26 @@ where
             warn!("no available space");
         }
 
+        self.read_bytes_peers.clear();
+        self.read_keys_peers.clear();
         for (region_id, peer_stat) in &self.region_peers {
-            let mut peer_read_stat = pdpb::PeerReadStat::default();
             let peer_id = peer_stat.peer_id;
-            peer_read_stat.set_peer_id(peer_id);
-            peer_read_stat.set_keys_read(peer_stat.read_keys - peer_stat.last_read_keys);
-            peer_read_stat.set_bytes_read(peer_stat.read_bytes - peer_stat.last_read_bytes);
-            peer_read_stat.set_region_id(*region_id);
-            stats.peers_read_stat.insert(*region_id,peer_read_stat);
+            let read_bytes = peer_stat.read_bytes - peer_stat.last_read_bytes;
+            let read_keys = peer_stat.read_keys - peer_stat.last_read_keys;
+            if read_keys < READ_FLOW_KEY && read_bytes < READ_FLOW_BYTE {
+                continue
+            }
+            let peer_read_keys_hot_stat = PeerHotStat::new_keys_hot_stat(peer_id,*region_id,read_keys);
+            let peer_read_bytes_hot_stat = PeerHotStat::new_bytes_hot_stat(peer_id,*region_id,read_bytes);
+            self.read_keys_peers.push(peer_read_keys_hot_stat);
+            self.read_bytes_peers.push(peer_read_bytes_hot_stat);
+        }
+
+        for peer_hot_stat in self.read_keys_peers.clone().into_vec() {
+            let mut peer_key_stat = pdpb::PeerHotStat::default();
+            peer_key_stat.set_peer_id(peer_hot_stat.peer_id);
+            peer_key_stat.set_region_id(peer_hot_stat.region_id);
+            // peer_key_stat.set_dim(pdpb::DIM::KEYS);
         }
 
         stats.set_available(available);
@@ -1410,5 +1483,31 @@ mod tests {
         assert!(total_cpu_usages > 90);
 
         pd_worker.stop();
+    }
+
+    #[test]
+    fn test_peer_hot_stat_cmp() {
+        let mut p1 = PeerHotStat {
+            peer_id:0,
+            region_id: 0,
+            keys: 1,
+            bytes: 1,
+            dim: HotStatDim::ByteDim,
+        };
+        let mut p2 = PeerHotStat {
+            peer_id:0,
+            region_id: 0,
+            keys: 2,
+            bytes: 2,
+            dim: HotStatDim::ByteDim,
+        };
+        assert_eq!(p1.cmp(&p2), cmp::Ordering::Less);
+        p1.bytes = 3;
+        assert_eq!(p1.cmp(&p2), cmp::Ordering::Greater);
+        p1.dim = HotStatDim::KeyDim;
+        p2.dim = HotStatDim::KeyDim;
+        assert_eq!(p1.cmp(&p2), cmp::Ordering::Less);
+        p1.keys = 3;
+        assert_eq!(p1.cmp(&p2), cmp::Ordering::Greater);
     }
 }
