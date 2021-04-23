@@ -218,7 +218,7 @@ openssl-src = { git = "https://github.com/busyjay/openssl-src-rs", branch = "pat
 procinfo = { git = "https://github.com/tikv/procinfo-rs", rev = "5125fc1a69496b73b26b3c08b6e8afc3c665a56e" }
 
 [patch.'https://github.com/pingcap/kvproto.git']
-kvproto = { git = "https://github.com/yisaer/kvproto.git", rev = "44b26c273838e1ced69682a1481775d9e118a2c5", default-features = false }
+kvproto = { git = "https://github.com/yisaer/kvproto.git", rev = "cfe4852e09175a35764f85cfb8da9d3407860062", default-features = false }
 
 [workspace]
 # See https://github.com/rust-lang/rfcs/blob/master/text/2957-cargo-features2.md
