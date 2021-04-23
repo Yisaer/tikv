@@ -70,6 +70,7 @@ pub fn tls_collect_read_flow(region_id: u64, statistics: &Statistics) {
         let mut m = m.borrow_mut();
         m.local_read_stats.add_flow(
             region_id,
+            false,
             &statistics.write.flow_stats,
             &statistics.data.flow_stats,
         );

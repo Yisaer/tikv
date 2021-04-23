@@ -377,11 +377,13 @@ pub fn tls_collect_scan_details(cmd: ReqTag, stats: &Statistics) {
     });
 }
 
-pub fn tls_collect_read_flow(region_id: u64, statistics: &Statistics) {
+pub fn tls_collect_read_flow(region_id: u64, is_stale_read: bool, statistics: &Statistics) {
     TLS_COP_METRICS.with(|m| {
         let mut m = m.borrow_mut();
+        
         m.local_read_stats.add_flow(
             region_id,
+            is_stale_read,
             &statistics.write.flow_stats,
             &statistics.data.flow_stats,
         );

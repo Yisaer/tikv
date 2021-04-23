@@ -48,12 +48,19 @@ type RecordPairVec = Vec<pdpb::RecordPair>;
 pub struct FlowStatistics {
     pub read_keys: usize,
     pub read_bytes: usize,
+    pub stale_read_keys: usize,
+    pub stale_read_bytes: usize,
 }
 
 impl FlowStatistics {
     pub fn add(&mut self, other: &Self) {
         self.read_bytes = self.read_bytes.saturating_add(other.read_bytes);
         self.read_keys = self.read_keys.saturating_add(other.read_keys);
+    }
+
+    pub fn add_stale_read_flow(&mut self, other: &Self) {
+        self.stale_read_bytes = self.stale_read_bytes.saturating_add(other.read_bytes);
+        self.stale_read_keys = self.stale_read_keys.saturating_add(other.read_keys);
     }
 }
 
@@ -186,8 +193,12 @@ impl Default for StoreStat {
 pub struct PeerStat {
     pub read_bytes: u64,
     pub read_keys: u64,
+    pub stale_read_bytes: u64,
+    pub stale_read_keys: u64,
     pub last_read_bytes: u64,
     pub last_read_keys: u64,
+    pub last_stale_read_bytes: u64,
+    pub last_stale_read_keys: u64,
     pub last_written_bytes: u64,
     pub last_written_keys: u64,
     pub last_report_ts: UnixSecs,
@@ -918,6 +929,8 @@ where
                 .or_insert_with(PeerStat::default);
             peer_stat.read_bytes += region_info.flow.read_bytes as u64;
             peer_stat.read_keys += region_info.flow.read_keys as u64;
+            peer_stat.stale_read_bytes += region_info.flow.stale_read_bytes as u64;
+            peer_stat.stale_read_keys += region_info.flow.stale_read_keys as u64;
             self.store_stat.engine_total_bytes_read += region_info.flow.read_bytes as u64;
             self.store_stat.engine_total_keys_read += region_info.flow.read_keys as u64;
 
@@ -1095,6 +1108,8 @@ where
                 let (
                     read_bytes_delta,
                     read_keys_delta,
+                    stale_read_bytes_delta,
+                    stale_read_keys_delta,
                     written_bytes_delta,
                     written_keys_delta,
                     last_report_ts,
@@ -1107,6 +1122,8 @@ where
                     peer_stat.approximate_keys = hb_task.approximate_keys;
                     let read_bytes_delta = peer_stat.read_bytes - peer_stat.last_read_bytes;
                     let read_keys_delta = peer_stat.read_keys - peer_stat.last_read_keys;
+                    let stale_read_bytes_delta = peer_stat.stale_read_bytes - peer_stat.last_stale_read_bytes;
+                    let stale_read_keys_delta = peer_stat.stale_read_keys - peer_stat.last_stale_read_keys;
                     let written_bytes_delta = hb_task.written_bytes - peer_stat.last_written_bytes;
                     let written_keys_delta = hb_task.written_keys - peer_stat.last_written_keys;
                     let mut last_report_ts = peer_stat.last_report_ts;
@@ -1114,6 +1131,8 @@ where
                     peer_stat.last_written_keys = hb_task.written_keys;
                     peer_stat.last_read_bytes = peer_stat.read_bytes;
                     peer_stat.last_read_keys = peer_stat.read_keys;
+                    peer_stat.last_stale_read_bytes = peer_stat.stale_read_bytes;
+                    peer_stat.last_stale_read_keys = peer_stat.stale_read_keys;
                     peer_stat.last_report_ts = UnixSecs::now();
                     if last_report_ts.is_zero() {
                         last_report_ts = self.start_ts;
@@ -1121,6 +1140,8 @@ where
                     (
                         read_bytes_delta,
                         read_keys_delta,
+                        stale_read_bytes_delta,
+                        stale_read_keys_delta,
                         written_bytes_delta,
                         written_keys_delta,
                         last_report_ts,
@@ -1137,6 +1158,8 @@ where
                         written_keys: written_keys_delta,
                         read_bytes: read_bytes_delta,
                         read_keys: read_keys_delta,
+                        stale_read_bytes: stale_read_bytes_delta,
+                        stale_read_keys: stale_read_keys_delta,
                         approximate_size: hb_task.approximate_size,
                         approximate_keys: hb_task.approximate_keys,
                         last_report_ts,

@@ -280,16 +280,24 @@ impl ReadStats {
         region_info.add_key_ranges(key_ranges);
     }
 
-    pub fn add_flow(&mut self, region_id: u64, write: &FlowStatistics, data: &FlowStatistics) {
+    pub fn add_flow(&mut self, region_id: u64, is_stale_read: bool, write: &FlowStatistics, data: &FlowStatistics) {
         let num = self.sample_num;
         let region_info = self
             .region_infos
             .entry(region_id)
             .or_insert_with(|| RegionInfo::new(num));
-        region_info.flow.add(write);
-        region_info.flow.add(data);
+        if is_stale_read {
+            region_info.flow.add_stale_read_flow(write);
+            region_info.flow.add_stale_read_flow(data);
+        }else {
+            region_info.flow.add(write);
+            region_info.flow.add(data);
+        }
     }
 
+    pub fn add_stale_read_flow(&mut self, region_id: u64, write: &FlowStatistics, data: &FlowStatistics) {
+
+    }
     pub fn is_empty(&self) -> bool {
         self.region_infos.is_empty()
     }

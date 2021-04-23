@@ -86,6 +86,7 @@ pub fn url_of_backend(backend: &StorageBackend) -> url::Url {
             u.set_path(gcs.get_prefix());
         }
         None => {}
+        _ => {}
     }
     u
 }

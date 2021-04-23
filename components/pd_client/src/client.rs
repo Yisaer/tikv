@@ -495,6 +495,8 @@ impl PdClient for RpcClient {
         req.set_pending_peers(region_stat.pending_peers.into());
         req.set_bytes_written(region_stat.written_bytes);
         req.set_keys_written(region_stat.written_keys);
+        req.set_stale_bytes_read(region_stat.stale_read_bytes);
+        req.set_stale_keys_read(region_stat.stale_read_keys);
         req.set_bytes_read(region_stat.read_bytes);
         req.set_keys_read(region_stat.read_keys);
         req.set_approximate_size(region_stat.approximate_size);

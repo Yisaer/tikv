@@ -317,7 +317,8 @@ impl Tracker {
             .observe(total_storage_stats.write.processed_keys as f64);
 
         tls_collect_scan_details(self.req_ctx.tag, &total_storage_stats);
-        tls_collect_read_flow(self.req_ctx.context.get_region_id(), &total_storage_stats);
+        let is_stale_read = self.req_ctx.context.get_stale_read();
+        tls_collect_read_flow(self.req_ctx.context.get_region_id(),is_stale_read, &total_storage_stats);
         tls_collect_perf_stats(self.req_ctx.tag, &self.total_perf_stats);
 
         let peer = self.req_ctx.context.get_peer();
