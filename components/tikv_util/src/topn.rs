@@ -16,7 +16,7 @@ impl<T: Ord> TopN<T> {
     pub fn new(capacity: usize) -> TopN<T> {
         TopN {
             capacity,
-            heap: BinaryHeap::with_capacity(capacity),
+            heap: BinaryHeap::with_capacity(capacity + 1),
         }
     }
 
