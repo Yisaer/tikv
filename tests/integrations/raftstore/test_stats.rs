@@ -97,7 +97,6 @@ fn test_store_heartbeat_report_hotspots() {
     fail::cfg("mock_hotspot_capacity", "return(1)").unwrap();
     fail::cfg("mock_hotspot_threshold", "return(0)").unwrap();
     fail::cfg("mock_tick_interval", "return(0)").unwrap();
-    fail::cfg("on_report_vec_too_large", "panic").unwrap();
     let (mut cluster, client, _) = must_new_and_configure_cluster_and_kv_client(|cluster| {
         cluster.cfg.raft_store.pd_store_heartbeat_tick_interval = ReadableDuration::millis(10);
     });
